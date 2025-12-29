@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Interview Results</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: linear-gradient(120deg,#eefaff,#f8fbff); }
+    .box { max-width:1000px; margin:40px auto; background:white; padding:28px; border-radius:12px; box-shadow:0 10px 30px rgba(13,38,76,0.06); }
+    .improved { background:#f1fdf8; padding:10px; border-radius:8px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="box">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3 class="mb-0">Interview Summary</h3>
+        <div><strong>Average Score:</strong> {{ average }}/10 ({{ total }} answered)</div>
+      </div>
+      <hr>
+      {% for a in answers %}
+        <div class="mb-4">
+          <h6><strong>Q{{ loop.index }}:</strong> {{ a.question }}</h6>
+          <p><strong>Your answer:</strong> {{ a.answer }}</p>
+          <p><strong>Score:</strong> {{ a.result.score }}/10</p>
+          <p><strong>Feedback:</strong> {{ a.result.feedback }}</p>
+          <p><strong>Improved answer:</strong></p>
+          <div class="improved">{{ a.result.improved_answer }}</div>
+        </div>
+        <hr>
+      {% endfor %}
+      <div class="mt-3 text-center">
+        <a href="{{ url_for('index') }}" class="btn btn-primary">Start New Interview</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

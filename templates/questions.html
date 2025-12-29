@@ -1,0 +1,145 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Question</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: linear-gradient(120deg,#f8fbff,#f0f7ff); min-height:100vh; }
+    .box { max-width:900px; margin:60px auto; background:white; padding:28px; border-radius:12px; box-shadow: 0 10px 30px rgba(13,38,76,0.06); }
+    textarea { resize:none; }
+    .mic-btn { font-size:16px; }
+    .improved { background:#f1fdf8; padding:10px; border-radius:8px; white-space:pre-wrap; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="box">
+      <div class="d-flex justify-content-between align-items-start mb-3">
+        <div>
+          <h5 class="mb-0">Question {{ q_index + 1 }} of {{ total }}</h5>
+          <small class="text-muted">Type your answer or click the mic to speak (Chrome recommended).</small>
+        </div>
+        <div>
+          <a href="{{ url_for('results') }}" class="btn btn-outline-secondary">Finish</a>
+        </div>
+      </div>
+
+      <h4 class="mb-3">{{ question }}</h4>
+
+      {% if not result %}
+      <form method="POST" id="answerForm">
+        <div class="mb-3">
+          <textarea id="answer_text" name="answer" class="form-control" rows="5" placeholder="Type your answer here or use the mic..."></textarea>
+        </div>
+
+        <div class="d-flex gap-2 mb-3">
+          <button type="button" id="micBtn" class="btn btn-outline-primary mic-btn">🎤 Speak</button>
+          <button type="submit" class="btn btn-primary">Submit Answer</button>
+        </div>
+      </form>
+      {% else %}
+      <div class="alert alert-light">
+        <h5>Feedback</h5>
+        <p><strong>Score:</strong> {{ result.score }}/10</p>
+        <p><strong>Feedback:</strong> {{ result.feedback }}</p>
+        <div class="mt-2">
+          <strong>Improved Answer:</strong>
+          <div class="improved mt-2">{{ result.improved_answer }}</div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-between mt-3">
+        {% if q_index > 0 %}
+          <a href="{{ url_for('question_view', q_index=q_index-1) }}" class="btn btn-outline-secondary">Previous</a>
+        {% else %}
+          <div></div>
+        {% endif %}
+        {% if show_next %}
+          <a href="{{ url_for('goto_next', q_index=q_index) }}" class="btn btn-success">Next Question →</a>
+        {% else %}
+          <a href="{{ url_for('results') }}" class="btn btn-success">See Results</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+<script>
+/*
+Robust speech handling:
+- Uses Web Speech API (webkitSpeechRecognition)
+- Accumulates final transcripts and sets them into textarea
+- On end, recognition stops and text remains in textarea
+Works best in Chrome.
+*/
+const micBtn = document.getElementById("micBtn");
+const answerBox = document.getElementById("answer_text");
+let recognition;
+let recording = false;
+let finalTranscript = ""; // preserve previously transcribed text
+
+function startRecognition() {
+  if (!('webkitSpeechRecognition' in window)) {
+    alert("Speech Recognition not supported in this browser. Use Chrome.");
+    return;
+  }
+  recognition = new webkitSpeechRecognition();
+  recognition.continuous = false;      // stop automatically when user stops speaking
+  recognition.interimResults = false;  // only final results
+  recognition.lang = 'en-IN';
+
+  recognition.onstart = () => {
+    recording = true;
+    micBtn.textContent = "⏺️ Listening... Click to stop";
+    micBtn.classList.remove("btn-outline-primary");
+    micBtn.classList.add("btn-danger");
+  };
+
+  recognition.onresult = (event) => {
+    // take the last final result
+    const transcript = Array.from(event.results)
+      .map(r => r[0].transcript)
+      .join(' ');
+    finalTranscript = (answerBox.value + " " + transcript).trim();
+    answerBox.value = finalTranscript;
+  };
+
+  recognition.onerror = (e) => {
+    console.error("Speech recognition error:", e);
+    alert("Speech recognition error. Please try again or type your answer.");
+    stopRecognition();
+  };
+
+  recognition.onend = () => {
+    // finalize
+    recording = false;
+    micBtn.textContent = "🎤 Speak";
+    micBtn.classList.remove("btn-danger");
+    micBtn.classList.add("btn-outline-primary");
+  };
+
+  recognition.start();
+}
+
+function stopRecognition() {
+  if (recognition) {
+    try { recognition.stop(); } catch (e) { /* ignore */ }
+  }
+  recording = false;
+  micBtn.textContent = "🎤 Speak";
+  micBtn.classList.remove("btn-danger");
+  micBtn.classList.add("btn-outline-primary");
+}
+
+micBtn.addEventListener("click", () => {
+  if (!recording) {
+    startRecognition();
+  } else {
+    stopRecognition();
+  }
+});
+</script>
+</body>
+</html>
