@@ -39,7 +39,7 @@ Ask 15–20 questions step-by-step, starting with:
 
 Return only a numbered list of questions.
 """
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-2.0-pro")
     response = model.generate_content(prompt)
     lines = [q.strip() for q in response.text.split("\n") if q.strip()]
     questions = [q[q.find(".")+1:].strip() if "." in q else q for q in lines]
