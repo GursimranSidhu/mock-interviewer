@@ -3,8 +3,9 @@ import uuid
 from flask import Flask, render_template, request, redirect, url_for, session
 import google.generativeai as genai
 import pdfplumber
-
+from google.api_core.exceptions import ResourceExhausted
 from dotenv import load_dotenv
+
 load_dotenv()
 
 app = Flask(__name__)
@@ -69,13 +70,14 @@ Give JSON as:
     except:
         return {"score": 6, "feedback": "Good attempt. Add more clarity.", "improved_answer": "N/A"}
 
-@app.route("/", methods=["GET","POST"])
+@app.route("/", methods=["GET", "POST"])
 def index():
     if request.method == "POST":
-        file = request.files["resume"]
-        if not file:
+        file = request.files.get("resume")
+
+        if not file or file.filename == "":
             return "Upload resume"
-        
+
         os.makedirs("uploads", exist_ok=True)
         path = os.path.join("uploads", file.filename)
         file.save(path)
@@ -83,7 +85,19 @@ def index():
         resume_text = extract_text_from_pdf(path)
         session["resume"] = resume_text
 
-        questions = generate_interview_questions(resume_text)
+        try:
+            questions = generate_interview_questions(resume_text)
+        except ResourceExhausted:
+            return render_template(
+                "index.html",
+                error="⚠️ AI service is temporarily busy. Please try again after some time."
+            )
+        except Exception as e:
+            return render_template(
+                "index.html",
+                error=f"Something went wrong: {str(e)}"
+            )
+
         session["questions"] = questions
         session["q_index"] = 0
         session["results"] = []
