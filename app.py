@@ -1,17 +1,19 @@
 import os
-import uuid
 from flask import Flask, render_template, request, redirect, url_for, session
 import google.generativeai as genai
 import pdfplumber
 from google.api_core.exceptions import ResourceExhausted
 from dotenv import load_dotenv
+import json
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = str(uuid.uuid4())
+app.secret_key = os.getenv("SECRET_KEY", "dev-secret-key")
 
 genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+
+# ------------------ Helpers ------------------
 
 def extract_text_from_pdf(file_path):
     text = ""
@@ -20,31 +22,40 @@ def extract_text_from_pdf(file_path):
             text += pg.extract_text() or ""
     return text.strip()
 
+
 def generate_interview_questions(resume_text):
     prompt = f"""
-You are a professional tech interviewer. 
+You are a professional tech interviewer.
 Interview the candidate based on this resume:
 
 {resume_text}
 
-Ask 15–20 questions step-by-step, starting with:
-- Introduction
-- Strengths & weakness
-- Projects (easy questions first)
-- Basics of programming
-- Data structures & algorithms
-- Basics of skills mentioned in the resume
-- Python basics
-- Future goals
-- Behavioral questions
-
+Ask 15–20 questions step-by-step.
 Return only a numbered list of questions.
 """
-    model = genai.GenerativeModel("gemini-2.0-pro")
-    response = model.generate_content(prompt)
-    lines = [q.strip() for q in response.text.split("\n") if q.strip()]
-    questions = [q[q.find(".")+1:].strip() if "." in q else q for q in lines]
-    return questions[:20]
+
+    try:
+        model = genai.GenerativeModel("gemini-2.0-pro")
+        response = model.generate_content(prompt)
+
+        if not response or not response.text:
+            return []
+
+        lines = [q.strip() for q in response.text.split("\n") if q.strip()]
+        questions = [
+            q[q.find(".")+1:].strip() if "." in q else q
+            for q in lines
+        ]
+
+        return questions[:20]
+
+    except ResourceExhausted:
+        return []
+
+    except Exception as e:
+        print("Gemini error:", e)
+        return []
+
 
 def evaluate_answer(question, answer, resume_text):
     prompt = f"""
@@ -52,23 +63,28 @@ Candidate resume: {resume_text}
 Question asked: {question}
 Answer given: {answer}
 
-Evaluate the answer professionally.
-Give JSON as:
+Evaluate professionally.
+Return JSON:
 {{
 "score": <0-10>,
 "feedback": "short feedback",
 "improved_answer": "better answer"
 }}
 """
-    model = genai.GenerativeModel("gemini-2.0-flash")
-    result = model.generate_content(prompt)
-    
-    import json
+
     try:
-        data = json.loads(result.text)
-        return data
+        model = genai.GenerativeModel("gemini-2.0-flash")
+        result = model.generate_content(prompt)
+        return json.loads(result.text)
+
     except:
-        return {"score": 6, "feedback": "Good attempt. Add more clarity.", "improved_answer": "N/A"}
+        return {
+            "score": 6,
+            "feedback": "Good attempt. Add more clarity.",
+            "improved_answer": "N/A"
+        }
+
+# ------------------ Routes ------------------
 
 @app.route("/", methods=["GET", "POST"])
 def index():
@@ -76,7 +92,7 @@ def index():
         file = request.files.get("resume")
 
         if not file or file.filename == "":
-            return "Upload resume"
+            return render_template("index.html", error="Please upload a resume.")
 
         os.makedirs("uploads", exist_ok=True)
         path = os.path.join("uploads", file.filename)
@@ -85,17 +101,12 @@ def index():
         resume_text = extract_text_from_pdf(path)
         session["resume"] = resume_text
 
-        try:
-            questions = generate_interview_questions(resume_text)
-        except ResourceExhausted:
+        questions = generate_interview_questions(resume_text)
+
+        if not questions:
             return render_template(
                 "index.html",
-                error="⚠️ AI service is temporarily busy. Please try again after some time."
-            )
-        except Exception as e:
-            return render_template(
-                "index.html",
-                error=f"Something went wrong: {str(e)}"
+                error="⚠️ AI service is busy. Please try again in a few minutes."
             )
 
         session["questions"] = questions
@@ -106,20 +117,29 @@ def index():
 
     return render_template("index.html")
 
-@app.route("/questions", methods=["GET","POST"])
+
+@app.route("/questions", methods=["GET", "POST"])
 def questions():
+    questions = session.get("questions")
+
+    if not questions:
+        return redirect(url_for("index"))
+
     q_index = session.get("q_index", 0)
-    questions = session.get("questions", [])
-    
+
     if q_index >= len(questions):
         return redirect(url_for("results"))
 
-    current_q = questions[q_index]
-    return render_template("questions.html", question=current_q, q_index=q_index)
+    return render_template(
+        "questions.html",
+        question=questions[q_index],
+        q_index=q_index
+    )
+
 
 @app.route("/submit_answer", methods=["POST"])
 def submit_answer():
-    answer = request.form["answer"]
+    answer = request.form.get("answer")
     q_index = session.get("q_index")
     resume = session.get("resume")
     questions = session.get("questions")
@@ -137,9 +157,11 @@ def submit_answer():
     session["q_index"] = q_index + 1
     return redirect(url_for("questions"))
 
+
 @app.route("/results")
 def results():
     return render_template("results.html", results=session.get("results", []))
 
+
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=10000)
